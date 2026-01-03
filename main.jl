@@ -3,7 +3,7 @@ using Hephaestus
 svg_path = joinpath(@__DIR__, "outputs", "TilingPattern2.svg")
 generate_tiling_svg(svg_path;
     symmetry=5,
-    radius=75.0,
+    radius=500,
     pattern=0.2,
     pan=0.0,
     disorder=0.0,
@@ -16,7 +16,8 @@ generate_tiling_svg(svg_path;
     orientation_coloring=false,
     width=500,
     height=500,
-    cropwidth=200,
-    cropheight=200)
+    # cropwidth=100,
+    # cropheight=100
+    )
 
 generate_3mf_from_svg(svg_path, joinpath(@__DIR__, "outputs", "TilingPattern2.3mf"); height=0.2)

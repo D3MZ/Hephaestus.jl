@@ -1,5 +1,84 @@
+function parse_svg_float(value::AbstractString)
+    cleaned = replace(strip(value), r"[^0-9eE+\\-\\.]" => "")
+    isempty(cleaned) && error("Unable to parse numeric value from: $(value)")
+    return parse(Float64, cleaned)
+end
+
+function svg_viewbox(svg_text::AbstractString)
+    m = match(r"<svg[^>]*viewBox=\"([^\"]+)\"", svg_text)
+    if m !== nothing
+        parts = split(strip(m.captures[1]))
+        length(parts) == 4 || error("Invalid viewBox in SVG.")
+        x = parse_svg_float(parts[1])
+        y = parse_svg_float(parts[2])
+        w = parse_svg_float(parts[3])
+        h = parse_svg_float(parts[4])
+        return (x, y, w, h)
+    end
+    mw = match(r"<svg[^>]*width=\"([^\"]+)\"", svg_text)
+    mh = match(r"<svg[^>]*height=\"([^\"]+)\"", svg_text)
+    if mw !== nothing && mh !== nothing
+        w = parse_svg_float(mw.captures[1])
+        h = parse_svg_float(mh.captures[1])
+        return (0.0, 0.0, w, h)
+    end
+    return (0.0, 0.0, 0.0, 0.0)
+end
+
+function clip_polygon_rect(points::Vector{Point}, xmin::Float64, ymin::Float64, xmax::Float64, ymax::Float64)
+    function clip_edge(pts::Vector{Point}, inside_fn, intersect_fn)
+        isempty(pts) && return Point[]
+        out = Point[]
+        prev = pts[end]
+        prev_inside = inside_fn(prev)
+        for curr in pts
+            curr_inside = inside_fn(curr)
+            if curr_inside
+                if !prev_inside
+                    push!(out, intersect_fn(prev, curr))
+                end
+                push!(out, curr)
+            elseif prev_inside
+                push!(out, intersect_fn(prev, curr))
+            end
+            prev = curr
+            prev_inside = curr_inside
+        end
+        return out
+    end
+
+    left_inside(p) = p.x >= xmin
+    right_inside(p) = p.x <= xmax
+    bottom_inside(p) = p.y >= ymin
+    top_inside(p) = p.y <= ymax
+
+    left_intersect(p1, p2) = abs(p2.x - p1.x) < EPSILON ?
+        Point(xmin, p1.y) :
+        Point(xmin, p1.y + (p2.y - p1.y) * (xmin - p1.x) / (p2.x - p1.x))
+    right_intersect(p1, p2) = abs(p2.x - p1.x) < EPSILON ?
+        Point(xmax, p1.y) :
+        Point(xmax, p1.y + (p2.y - p1.y) * (xmax - p1.x) / (p2.x - p1.x))
+    bottom_intersect(p1, p2) = abs(p2.y - p1.y) < EPSILON ?
+        Point(p1.x, ymin) :
+        Point(p1.x + (p2.x - p1.x) * (ymin - p1.y) / (p2.y - p1.y), ymin)
+    top_intersect(p1, p2) = abs(p2.y - p1.y) < EPSILON ?
+        Point(p1.x, ymax) :
+        Point(p1.x + (p2.x - p1.x) * (ymax - p1.y) / (p2.y - p1.y), ymax)
+
+    pts = clip_edge(points, left_inside, left_intersect)
+    pts = clip_edge(pts, right_inside, right_intersect)
+    pts = clip_edge(pts, bottom_inside, bottom_intersect)
+    pts = clip_edge(pts, top_inside, top_intersect)
+    return pts
+end
+
 function generate_3mf_from_svg(svg_path::AbstractString, output_path::AbstractString; height::Real=1.0)
     svg_text = read(svg_path, String)
+    vb_x, vb_y, vb_w, vb_h = svg_viewbox(svg_text)
+    crop_xmin = vb_x
+    crop_ymin = vb_y
+    crop_xmax = vb_x + vb_w
+    crop_ymax = vb_y + vb_h
     poly_re = r"<polygon[^>]*points=\"([^\"]+)\"[^>]*fill=\"([^\"]+)\"[^>]*/?>"
     polys = Tuple{Vector{Point}, String}[]
     for m in eachmatch(poly_re, svg_text)
@@ -12,7 +91,13 @@ function generate_3mf_from_svg(svg_path::AbstractString, output_path::AbstractSt
             y = parse(Float64, parts[2])
             push!(pts, Point(x, y))
         end
+        if vb_w > 0 && vb_h > 0
+            pts = clip_polygon_rect(pts, crop_xmin, crop_ymin, crop_xmax, crop_ymax)
+        end
         length(pts) >= 3 || continue
+        if vb_w > 0 && vb_h > 0
+            pts = [Point(p.x - crop_xmin, p.y - crop_ymin) for p in pts]
+        end
         color = m.captures[2]
         push!(polys, (pts, color))
     end
