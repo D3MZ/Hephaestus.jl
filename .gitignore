@@ -9,3 +9,4 @@ Manifest.toml
 docs/build/
 scratch*
 tmp/
+outputs/
