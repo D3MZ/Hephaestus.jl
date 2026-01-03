@@ -1,0 +1,13 @@
+name = "Hephaestus"
+uuid = "df294e67-85fc-45fd-aded-a1d788fddfcf"
+authors = ["Demetrius Michael <arrrwalktheplank@gmail.com>"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.12"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
